@@ -1,6 +1,5 @@
 ```mermaid
 sequenceDiagram
-    %% Configuração de Tema para ficar mais "Professional Clean"
     %%{init: { 
       'theme': 'base', 
       'themeVariables': { 
@@ -15,7 +14,6 @@ sequenceDiagram
 
     autonumber
 
-    %% Definição dos Participantes com Ícones
     actor App as 📱 Client App
     participant API as ⚙️ Backend API
     

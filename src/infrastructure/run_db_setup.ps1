@@ -25,6 +25,3 @@ docker exec -i insurance-core-postgres sh -c `
 docker exec -i insurance-core-postgres sh -c `
   "psql -U `$POSTGRES_USER -d `$POSTGRES_DB -c 'CALL sys.sp_generate_stress_load(10, NULL);'"
 
-# Run ClickHouse client to apply analytics schema and materialized views
-docker exec -i insurance-clickhouse clickhouse-client --multiquery --queries-file /var/lib/clickhouse/04_setup_clickhouse.sql
-Write-Host "ClickHouse configured successfully!"

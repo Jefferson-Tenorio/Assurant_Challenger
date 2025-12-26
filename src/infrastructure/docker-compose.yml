@@ -95,12 +95,7 @@ services:
       - "6379:6379"
     networks:
       - insurance-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
+      
   # --- 5. EVENT BUS (Redpanda as Kafka-compatible event backbone) ---
   event-bus:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
@@ -272,11 +267,7 @@ services:
     command: --redis.addr=redis://cache-layer:6379
     networks:
       - insurance-network
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9121/metrics"]
-      interval: 15s
-      timeout: 5s
-      retries: 1
+    
 
 
   event-console:

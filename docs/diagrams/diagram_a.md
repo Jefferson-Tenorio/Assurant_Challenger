@@ -1,16 +1,13 @@
 ```mermaid
 graph TD
-    %% Estilos
     classDef person fill:#08427b,stroke:#052e56,color:#fff;
     classDef container fill:#23a2d9,stroke:#1f8ebf,color:#fff;
     classDef db fill:#1168bd,stroke:#0b4884,color:#fff;
     classDef queue fill:#999,stroke:#666,color:#fff;
     classDef external fill:#999,stroke:#666,color:#fff,stroke-dasharray: 5 5;
 
-    %% Atores
     Customer(Segurado<br/>App Mobile/Web):::person
 
-    %% Sistema
     subgraph "Insurance Platform Ecosystem"
         API(API Gateway<br/>Go/Java):::container
         
@@ -24,7 +21,7 @@ graph TD
         CH[(Analytics Engine<br/>ClickHouse)]:::db
     end
 
-    %% Relações
+    
     Customer -- "HTTPS/JSON" --> API
     API -- "Writes (JDBC)" --> PG
     API -- "Reads (RESP)" --> Redis

@@ -1,9 +1,7 @@
 ```mermaid
 graph TD
-    %% Configuração de cores e curvas suaves
     %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#fff', 'edgeLabelBackground':'#fff', 'tertiaryColor': '#f3f4f6'}}}%%
 
-    %% Definição de Estilos (CSS Classes)
     classDef db fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
     classDef vault fill:#ffebee,stroke:#c62828,stroke-width:2px,stroke-dasharray: 5 5,color:#b71c1c;
     classDef queue fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20;
@@ -14,10 +12,8 @@ graph TD
         PG_BR[("🐘 Postgres BR<br/>(Partition: BR)")]:::db
         Vault_BR["🔒 PII Vault BR<br/>(CPF & Names)"]:::vault
         
-        %% Relação interna
         PG_BR <--> Vault_BR
         
-        %% Nota de Segurança (Workaround para Flowchart)
         NoteBR>⚠️ Sensitive data NEVER<br/>leaves this boundary]:::note
         Vault_BR -.- NoteBR
     end
@@ -27,7 +23,6 @@ graph TD
         PG_EU[("🐘 Postgres EU<br/>(Partition: EU)")]:::db
         Vault_EU["🔒 PII Vault EU<br/>(GDPR Data)"]:::vault
         
-        %% Relação interna
         PG_EU <--> Vault_EU
     end
 
@@ -39,11 +34,9 @@ graph TD
         Redpanda -- "Metadata Only" --> Cassandra
     end
 
-    %% Conexões entre Regiões e Global
     PG_BR -- "CDC Stream<br/>(Anonymized)" --> Redpanda
     PG_EU -- "CDC Stream<br/>(Anonymized)" --> Redpanda
 
-    %% Link invisible para forçar layout se necessário (opcional)
     %% BR_Region ~~~ EU_Region
 ```
 

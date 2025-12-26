@@ -1,0 +1,312 @@
+services:
+  # --- 1. CORE TRANSACTIONAL SERVICE (requirements: transactional core, RLS, CDC) ---
+  transactional-db:
+    image: postgres:16-alpine
+    container_name: insurance-core-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: insurance_core_db
+    # IMPORTANT: enable logical decoding for Debezium CDC
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_core_data:/var/lib/postgresql/data
+      - ../database/00_init_schema.sql:/docker-entrypoint-initdb.d/00_init_schema.sql
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin_user} -d insurance_core_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    # Stress test helper (runs the seed/stress SQL when used; profile 'tools')
+  stress_test:
+    image: postgres:15-alpine
+    container_name: insurance-stress-test
+    # Do not start automatically; used on-demand via Docker Compose profile 'tools'
+    profiles: ["tools"] 
+    # Map the stress-test script into the container
+    volumes:
+      - ../database/03_setup_data_stress.sql:/workload.sql
+    depends_on:
+      - transactional-db
+    networks:
+      - insurance-network
+    # Keep container running (idle) so we can exec commands into it when needed
+    entrypoint: ["tail", "-f", "/dev/null"]
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep tail | grep -v grep"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+
+  # --- 2. GLOBAL DISTRIBUTED NOSQL (Cassandra for global index/routing) ---
+  distributed-nosql:
+    image: cassandra:4.1
+    container_name: insurance-cassandra
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    networks:
+      - insurance-network
+    environment:
+      - CASSANDRA_CLUSTER_NAME=GlobalInsuranceCluster
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+
+  # --- 3. ANALYTICAL ENGINE (ClickHouse for analytics/OLAP) ---
+  analytical-db:
+    image: clickhouse/clickhouse-server:latest
+    container_name: insurance-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - insurance-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # --- 4. IN-MEMORY LAYER (Redis cache for hot data / sessions) ---
+  cache-layer:
+    image: redis:7-alpine
+    container_name: insurance-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 5. EVENT BUS (Redpanda as Kafka-compatible event backbone) ---
+  event-bus:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    container_name: insurance-event-bus
+    command: >
+      redpanda start
+      --smp 1
+      --overprovisioned
+      --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      --advertise-kafka-addr internal://event-bus:9092,external://localhost:19092
+      --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      --advertise-pandaproxy-addr internal://event-bus:8082,external://localhost:18082
+      --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      --rpc-addr 0.0.0.0:33145
+    ports:
+      - "19092:19092"
+      - "18081:18081"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 6. DATA CAPTURE / CDC (Debezium connector)
+  # Debezium captures Postgres changes (transactional outbox) and publishes to Redpanda/Kafka
+  debezium-connector:
+    image: debezium/connect:2.5
+    container_name: insurance-cdc-connector
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: event-bus:9092
+      GROUP_ID: 1
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+    networks:
+      - insurance-network
+    depends_on:
+      transactional-db:
+        condition: service_healthy
+      event-bus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  debezium-init:
+    image: curlimages/curl:8.5.0
+    depends_on:
+      debezium-connector:
+        condition: service_healthy
+    networks:
+      - insurance-network
+    environment:
+      - DB_USER=${DB_USER}         # Necessário passar a variável para dentro
+      - DB_PASSWORD=${DB_PASSWORD} # Necessário passar a variável para dentro
+    volumes:
+    # Register script and connector JSON are mounted so init container can register connectors
+    - ./insurance-outbox-connector.json:/insurance-outbox-connector.json
+    - ./register-conection.sh:/register-conection.sh
+    entrypoint: ["sh", "/register-conection.sh"]
+
+
+
+  # --- 7. SECURITY & SECRETS (HashiCorp Vault for secrets management) ---
+  security-vault:
+    image: hashicorp/vault:1.15
+    container_name: insurance-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - insurance-network
+    healthcheck: 
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+  # --- 8. OBSERVABILITY (Prometheus + Grafana + exporters) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: insurance-metrics
+    restart: always # keep Prometheus running continuously
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    depends_on:
+      postgres-exporter:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_healthy
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: insurance-dashboard
+    restart: always # Mantenha sempre ativo
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Senha inicial
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource,grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana # Persistência é vital aqui
+    networks:
+      - insurance-network
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      analytical-db:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+    # Postgres exporter for DB metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter
+    container_name: insurance-pg-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-admin_user}:${DB_PASSWORD:-secure_pass_123}@transactional-db:5432/insurance_core_db?sslmode=disable"
+    networks:
+      - insurance-network
+    depends_on:
+      transactional-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+  redis-exporter:
+    image: oliver006/redis_exporter
+    container_name: insurance-redis-exporter
+    command: --redis.addr=redis://cache-layer:6379
+    networks:
+      - insurance-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9121/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 1
+
+
+  event-console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.3
+    container_name: insurance-event-console
+    environment:
+      KAFKA_BROKERS: event-bus:9092
+      KAFKA_SCHEMAREGISTRY_URL: http://event-bus:8081
+    ports:
+      - "8080:8080"
+    networks:
+      - insurance-network
+    depends_on:
+      event-bus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+volumes:
+  postgres_core_data:
+  redpanda_data:
+  cassandra_data:
+  clickhouse_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  insurance-network:
+    driver: bridge

@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 10s # Scrape interval: 10s (suitable for dev and stress testing)
+
+scrape_configs:
+  # Prometheus self-scrape
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Postgres metrics (via postgres_exporter)
+  - job_name: 'postgres-core'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Redis metrics (via redis_exporter)
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # Redpanda native metrics endpoint
+  # Redpanda exposes metrics under /public_metrics; adjust if your image/version differs.
+  - job_name: 'redpanda'
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ['event-bus:9644']
+
+  # Debezium / Kafka Connect metrics note:
+  # Debezium exposes metrics through JMX or Kafka Connect endpoints depending on configuration.
+  # In production you should add a JMX exporter or scrape Connect's HTTP metrics; for local dev
+  # it's common to rely on container health checks or an external exporter.
+
+  # ClickHouse native metrics
+  - job_name: 'clickhouse'
+    static_configs:
+      - targets: ['analytical-db:8123'] # ClickHouse HTTP interface exposes metrics; verify port in config if needed

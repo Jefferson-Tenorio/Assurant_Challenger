@@ -1,8 +1,4 @@
--- =======================================================================================
--- =======================================================================================
--- HOTFIX: Polyfill for UUID v7 (Postgres 16 has no native UUID v7 yet)
--- This helper generates a time-ordered UUID to improve insert locality.
--- =======================================================================================
+-- Polyfill for UUID v7 (Postgres 16 has no native UUID v7 yet)
 CREATE OR REPLACE FUNCTION uuid_generate_v7()
 RETURNS uuid
 AS $$
@@ -22,15 +18,9 @@ BEGIN
         'hex')::uuid;
 END
 $$ LANGUAGE plpgsql;
-
--- ... resto do seu script abaixo ...
-
--- =======================================================================================
 -- FILE: 01_stored_procedure.sql
 -- DESCRIPTION: Business logic encapsulated as DB functions/procedures
 --              (Idempotency, bi-temporal validation and transactional outbox)
--- =======================================================================================
-
 -- 1. FUNCTION: REGISTER CLAIM (SAFE)
 -- Purpose: validate historical coverage (bi-temporal), enforce idempotency,
 -- and persist both the domain object and a transactional outbox event atomically.

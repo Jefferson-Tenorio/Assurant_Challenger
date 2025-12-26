@@ -261,15 +261,6 @@ services:
       retries: 5
 
 
-  redis-exporter:
-    image: oliver006/redis_exporter
-    container_name: insurance-redis-exporter
-    command: --redis.addr=redis://cache-layer:6379
-    networks:
-      - insurance-network
-    
-
-
   event-console:
     image: docker.redpanda.com/redpandadata/console:v2.4.3
     container_name: insurance-event-console

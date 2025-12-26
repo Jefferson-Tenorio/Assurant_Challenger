@@ -203,8 +203,6 @@ services:
     depends_on:
       postgres-exporter:
         condition: service_healthy
-      redis-exporter:
-        condition: service_healthy
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus

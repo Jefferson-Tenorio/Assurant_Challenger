@@ -1,11 +1,6 @@
--- =======================================================================================
--- FILE: 00_init_schemas.sql
 -- DESCRIPTION: Initial database structure (DDL), partitioning, security (RLS), and CDC.
--- DATE: 2025-12-25
--- =======================================================================================
-
 -- 1. INITIAL SETTINGS AND EXTENSIONS
--- =======================================================================================
+
 CREATE SCHEMA IF NOT EXISTS vault;
 CREATE SCHEMA IF NOT EXISTS core;
 CREATE SCHEMA IF NOT EXISTS billing;
@@ -20,10 +15,7 @@ CREATE TYPE claim_status AS ENUM ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED', '
 CREATE TYPE payment_status AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED');
 
 -- 2. TABLE CREATION (DEPENDENCY ORDER IS CRITICAL)
--- =======================================================================================
-
 -- 2.1. VAULT (SENSITIVE DATA - DEPENDENCY LEVEL 0)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE vault.customer_pii (
     pii_token UUID NOT NULL,
     full_name_enc BYTEA NOT NULL,
@@ -44,7 +36,6 @@ CREATE TABLE vault.customer_pii_eu PARTITION OF vault.customer_pii FOR VALUES IN
 
 
 -- 2.2. CORE POLICIES (LEVEL 1 - DEPENDS ON VAULT)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE core.policies (
     policy_id UUID NOT NULL,
     pii_token UUID NOT NULL,
@@ -65,7 +56,6 @@ CREATE TABLE core.policies_eu PARTITION OF core.policies FOR VALUES IN ('EU');
 
 
 -- 2.3. POLICY VERSIONS (LEVEL 2 - DEPENDS ON POLICIES)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE core.policy_versions (
     version_id UUID NOT NULL DEFAULT uuid_generate_v4(),
     policy_id UUID NOT NULL,
@@ -74,11 +64,9 @@ CREATE TABLE core.policy_versions (
     premium_amount DECIMAL(18, 2) NOT NULL,
     coverage_limit DECIMAL(18, 2) NOT NULL,
 
-    -- Linha do tempo de Negócio
     valid_from TIMESTAMP WITH TIME ZONE NOT NULL,
     valid_to TIMESTAMP WITH TIME ZONE NOT NULL,
 
-    -- Linha do tempo de Sistema
     system_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     superseded_at TIMESTAMP WITH TIME ZONE,
 
@@ -96,7 +84,6 @@ CREATE TABLE core.policy_versions_eu PARTITION OF core.policy_versions FOR VALUE
 
 
 -- 2.4. BILLING (LEVEL 2 - DEPENDS ON POLICIES)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE billing.installments (
     installment_id UUID NOT NULL DEFAULT uuid_generate_v4(),
     policy_id UUID NOT NULL,
@@ -117,7 +104,6 @@ CREATE TABLE billing.installments_eu PARTITION OF billing.installments FOR VALUE
 
 
 -- 2.5. CLAIMS (LEVEL 2 - DEPENDS ON POLICIES)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE core.claims (
     claim_id UUID NOT NULL,
     policy_id UUID NOT NULL,
@@ -144,7 +130,6 @@ CREATE TABLE core.claims_eu PARTITION OF core.claims FOR VALUES IN ('EU');
 
 
 -- 2.6. TRANSACTIONAL OUTBOX (INFRASTRUCTURE)
--- ---------------------------------------------------------------------------------------
 CREATE TABLE sys.transactional_outbox (
     event_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     correlation_id UUID NOT NULL, 
@@ -163,7 +148,6 @@ CREATE INDEX idx_outbox_unprocessed ON sys.transactional_outbox (processed_at) W
 
 
 -- 3. SECURITY: ROW LEVEL SECURITY (RLS)
--- =======================================================================================
 
 -- Enable RLS on parent tables
 ALTER TABLE core.policies ENABLE ROW LEVEL SECURITY;
@@ -248,7 +232,6 @@ CREATE POLICY regional_isolation ON core.policy_versions_eu
 
 
 -- 4. CDC CONFIGURATION (DEBEZIUM)
--- =======================================================================================
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'debezium_user') THEN

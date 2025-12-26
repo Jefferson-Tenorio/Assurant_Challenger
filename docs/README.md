@@ -123,10 +123,13 @@
   docker compose -f infrastructure/docker-compose.yml up --build -d
   ```
 
-  2. Initialize DB and seed data (Windows example):
+  2. Initialize DB and seed data (Windows example or linux):
 
   ```powershell
   powershell -File infrastructure\run_db_setup.ps1
+  ```
+  ```bash
+  bash -File infrastructure\run_db_setup.sh
   ```
 
   3. Set session region before RLS-protected queries:

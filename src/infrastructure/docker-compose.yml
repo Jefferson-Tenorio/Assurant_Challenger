@@ -73,8 +73,14 @@ services:
     ports:
       - "8123:8123"
       - "9000:9000"
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin123
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ../database/05_click_house_user.sql:/docker-entrypoint-initdb.d/01_init_clickhouse.sql
+      - ../database/adm.xml:/etc/clickhouse-server/users.d
+
     networks:
       - insurance-network
     ulimits:

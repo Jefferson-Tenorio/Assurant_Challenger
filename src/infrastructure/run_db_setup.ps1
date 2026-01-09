@@ -42,56 +42,6 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "   Erro ao configurar ClickHouse." -ForegroundColor Red
 }
 
-# ------------------------------------------------------------------------------
-# 3. DEBEZIUM (KAFKA CONNECT) SETUP
-# ------------------------------------------------------------------------------
-Write-Host "3. Configurando Conector Debezium..." -ForegroundColor Yellow
-
-# URL do Kafka Connect
-$ConnectUrl = "http://localhost:8083"
-
-# Loop simples para esperar o Kafka Connect estar pronto (ele demora a subir)
-Write-Host "   Aguardando Kafka Connect estar online em $ConnectUrl..."
-$RetryCount = 0
-while ($RetryCount -lt 30) {
-    try {
-        $null = Invoke-RestMethod -Uri "$ConnectUrl" -ErrorAction Stop
-        Write-Host "   Kafka Connect está ONLINE!" -ForegroundColor Green
-        break
-    } catch {
-        Start-Sleep -Seconds 2
-        Write-Host -NoNewline "."
-        $RetryCount++
-    }
-}
-
-# Ler o JSON template e substituir as variáveis
-$JsonPath = "insurance-outbox-connector.json" # Caminho relativo dentro de infrastructure/
-if (Test-Path $JsonPath) {
-    $JsonContent = Get-Content -Path $JsonPath -Raw
-    
-    # Substituição das variáveis de ambiente no JSON em memória
-    $JsonContent = $JsonContent.Replace('${DB_USER}', $DB_USER)
-    $JsonContent = $JsonContent.Replace('${DB_PASSWORD}', $DB_PASSWORD)
-
-    # Enviar para a API
-    try {
-        $response = Invoke-RestMethod -Uri "$ConnectUrl/connectors" `
-                                      -Method Post `
-                                      -ContentType "application/json" `
-                                      -Body $JsonContent
-        Write-Host "   Conector registrado com sucesso!" -ForegroundColor Green
-    } catch {
-        # Erro 409 significa que já existe, não é um problema real
-        if ($_.Exception.Response.StatusCode.value__ -eq 409) {
-            Write-Host "   Conector já existia (ignorado)." -ForegroundColor Gray
-        } else {
-            Write-Error "   Falha ao criar conector: $_"
-        }
-    }
-} else {
-    Write-Warning "   Arquivo $JsonPath não encontrado. Pulei a etapa do Debezium."
-}
 
 # ------------------------------------------------------------------------------
 # 4. STRESS TEST (Opcional)

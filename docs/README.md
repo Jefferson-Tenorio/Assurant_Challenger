@@ -190,3 +190,16 @@
   - `infrastructure/insurance-outbox-connector.json` — Debezium connector example.
   - `docs/Challenger.md` — original challenge brief and detailed HLD.
   ----------------------
+
+
+Connector Configuration Strategy
+The Debezium configuration (insurance-outbox-connector.json) is tuned for high-throughput generic consumption by analytics engines (ClickHouse) and services.
+Key Settings & Rationale:
+plugin.name: pgoutput: Uses the standard logical decoding plugin present in PostgreSQL 10+, avoiding the need to install custom plugins like wal2json in the database.
+transforms: unwrap (SMT):
+Why: Default Debezium events include operation type (op), timestamps (ts_ms), and before/after states.
+Decision: We use ExtractNewRecordState to flatten the event. The Kafka message payload contains only the column values of the inserted row (the Outbox event). This simplifies consumers significantly.
+topic.prefix: insurance:
+Events are routed to insurance.sys.transactional_outbox.
+key/value.converter: JSON (No Schemas):
+Disables the verbose JSON schema envelope. The payload is raw JSON, reducing network bandwidth and simplifying parsing in ClickHouse (JSONEachRow format).

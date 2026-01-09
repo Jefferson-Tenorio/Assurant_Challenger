@@ -71,16 +71,13 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: insurance-clickhouse
     ports:
-      - "8123:8123"
-      - "9000:9000"
-    environment:
-      CLICKHOUSE_USER: admin
-      CLICKHOUSE_PASSWORD: admin123
+      - "8123:8123" # HTTP (Para DBeaver, UI, etc)
+      - "9000:9000" # Nativo (Drivers TCP)
     volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - ../database/05_click_house_user.sql:/docker-entrypoint-initdb.d/01_init_clickhouse.sql
-      - ../database/adm.xml:/etc/clickhouse-server/users.d
-
+      # Script de inicialização do banco
+      - ../database/04_init_clickhouse_table.sql:/docker-entrypoint-initdb.d/01_init_clickhouse.sql
+      # Configuração de usuário (Admin)
+      - ./user-clickhouse.xml:/etc/clickhouse-server/users.d/user-clickhouse.xml
     networks:
       - insurance-network
     ulimits:

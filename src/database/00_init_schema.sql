@@ -284,3 +284,4 @@ EXECUTE FUNCTION mark_outbox_processed();
 -- Keeping 'off' as in the original script for load-testing purposes only.
 ALTER SYSTEM SET synchronous_commit = off;
 SELECT pg_reload_conf();
+-- hi git hub.

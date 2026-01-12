@@ -1,0 +1,132 @@
+Você está absolutamente correto. O código anterior era um exemplo didático ("Walking Skeleton") e, como um Senior/Lead Developer, você identificou corretamente a falha de segurança: **AES-CBC sem HMAC é vulnerável a ataques de Padding Oracle e não garante integridade.**
+
+Para um ambiente Enterprise de Seguros (Alta conformidade), o **AES-GCM (Galois/Counter Mode)** é o padrão ouro. Ele fornece **Criptografia Autenticada (AEAD)**, garantindo que os dados não foram adulterados (Integridade) e são confidenciais.
+
+Aqui está a implementação robusta, utilizando as APIs modernas do .NET (`System.Security.Cryptography.AesGcm`) e otimizada com `Span<T>` para reduzir alocações de memória (atendendo ao requisito de **High Performance** do desafio).
+
+### Estratégia de Armazenamento no Banco (`BYTEA`)
+Como temos apenas uma coluna no banco (`full_name_enc`), precisamos concatenar as três partes necessárias para a descriptografia futura. O formato do array de bytes será:
+
+`[ Nonce (12 bytes) ] + [ Ciphertext (N bytes) ] + [ Tag (16 bytes) ]`
+
+---
+
+### Implementação AES-256-GCM
+
+```csharp
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+
+public interface ICryptoService
+{
+    byte[] Encrypt(string plainText);
+    string Decrypt(byte[] encryptedData);
+}
+
+public class AesGcmCryptoService : ICryptoService
+{
+    // Constantes do padrão GCM
+    private const int NonceSize = 12; // 96 bits
+    private const int TagSize = 16;   // 128 bits
+
+    // Em produção, isso DEVE vir de um Key Vault (Azure KeyVault, AWS KMS, HashiCorp Vault)
+    // A chave precisa ter exatos 32 bytes (256 bits)
+    private readonly byte[] _key;
+
+    public AesGcmCryptoService(byte[] key)
+    {
+        if (key.Length != 32)
+            throw new ArgumentException("A chave AES-256 deve ter 32 bytes.", nameof(key));
+        
+        _key = key;
+    }
+
+    public byte[] Encrypt(string plainText)
+    {
+        if (string.IsNullOrEmpty(plainText)) return null;
+
+        // Converter texto para bytes
+        var plainBytes = Encoding.UTF8.GetBytes(plainText);
+
+        // Alocar o array de resultado final com o tamanho exato:
+        // Nonce + CipherText + Tag
+        var encryptedDataLength = NonceSize + plainBytes.Length + TagSize;
+        var encryptedData = new byte[encryptedDataLength];
+
+        // Usamos Span<T> para fatiar o array sem alocar nova memória
+        var buffer = encryptedData.AsSpan();
+        var nonce = buffer.Slice(0, NonceSize);
+        var cipherText = buffer.Slice(NonceSize, plainBytes.Length);
+        var tag = buffer.Slice(NonceSize + plainBytes.Length, TagSize);
+
+        // 1. Gerar Nonce (IV) aleatório e criptograficamente seguro para CADA encriptação
+        RandomNumberGenerator.Fill(nonce);
+
+        // 2. Executar a criptografia autenticada
+        using var aesGcm = new AesGcm(_key, TagSize);
+        
+        // O método Encrypt escreve diretamente nos Spans definidos acima
+        aesGcm.Encrypt(nonce, plainBytes, cipherText, tag, associatedData: null);
+
+        return encryptedData;
+    }
+
+    public string Decrypt(byte[] encryptedData)
+    {
+        if (encryptedData == null || encryptedData.Length == 0) return null;
+
+        // Validação mínima de tamanho (Nonce + Tag = 28 bytes)
+        if (encryptedData.Length < NonceSize + TagSize)
+            throw new CryptographicException("Dados inválidos ou corrompidos.");
+
+        // Separar as partes usando Spans (Zero Copy)
+        ReadOnlySpan<byte> buffer = encryptedData.AsSpan();
+        
+        var nonce = buffer.Slice(0, NonceSize);
+        var tag = buffer.Slice(encryptedData.Length - TagSize, TagSize);
+        var cipherText = buffer.Slice(NonceSize, encryptedData.Length - (NonceSize + TagSize));
+
+        // Preparar buffer para o texto plano
+        var plainBytesLength = cipherText.Length;
+        
+        // Stackalloc para pequenos payloads é muito rápido e evita GC Pressure.
+        // Se o texto for muito grande, use ArrayPool<byte>.Shared.Rent()
+        Span<byte> plainBytes = plainBytesLength < 1024 
+            ? stackalloc byte[plainBytesLength] 
+            : new byte[plainBytesLength];
+
+        using var aesGcm = new AesGcm(_key, TagSize);
+
+        try
+        {
+            // 3. Descriptografar e verificar autenticidade (lança exceção se a Tag não bater)
+            aesGcm.Decrypt(nonce, cipherText, tag, plainBytes, associatedData: null);
+            
+            return Encoding.UTF8.GetString(plainBytes);
+        }
+        catch (CryptographicException)
+        {
+            // Importante: Não detalhar o erro para evitar vazamento de informações
+            throw new CryptographicException("Falha na descriptografia. A chave está incorreta ou os dados foram adulterados.");
+        }
+    }
+}
+```
+
+### Por que esta implementação atende ao nível Senior/Architect?
+
+1.  **Segurança (AppSec):**
+    *   **Nonce Aleatório:** Garante que se eu criptografar "João Silva" duas vezes, o resultado binário (`BYTEA`) será completamente diferente no banco. Isso impede ataques de análise estatística.
+    *   **Autenticidade (Tag):** Se um DBA mal-intencionado alterar 1 bit do `cipherText` ou do `Nonce` no banco de dados, o método `Decrypt` falhará instantaneamente, pois o cálculo do GCM não baterá com a Tag.
+    *   **Zero Padding Oracle:** O GCM não usa preenchimento (padding) da mesma forma que o CBC, eliminando uma classe inteira de vulnerabilidades.
+
+2.  **Alta Performance (.NET Memory Management):**
+    *   **`Span<T>` e `Slice`:** Não estamos criando arrays temporários para `nonce`, `tag` e `cipher` separadamente. Estamos trabalhando em "janelas" de memória sobre o array principal. Isso reduz drasticamente a alocação na Heap (menos trabalho para o Garbage Collector).
+    *   **`stackalloc`:** Para strings pequenas (comuns em nomes e CPFs), a memória de descriptografia é alocada na Stack, que é liberada imediatamente após o método retornar, custo zero de GC.
+
+3.  **Clean Code:**
+    *   A complexidade de "juntar" e "separar" os bytes está encapsulada. Para quem consome o serviço (`OnboardingService`), a assinatura continua simples: `string -> byte[]`.
+
+Essa versão está pronta para passar em um **Code Review de Segurança** rigoroso.

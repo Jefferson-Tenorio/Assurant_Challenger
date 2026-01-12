@@ -30,7 +30,7 @@ docker exec -i insurance-core-postgres sh -c "psql -U $DB_USER -d insurance_core
 Write-Host "2. Configurando ClickHouse (Analytics)..." -ForegroundColor Yellow
 
 # Copy ClickHouse setup SQL into the container
-docker cp ../database/04_clickhouse_table_gemini.sql insurance-clickhouse:/var/lib/clickhouse/04_clickhouse_table_gemini.sql
+docker cp ../database/04_init_clickhouse_table.sql insurance-clickhouse:/var/lib/clickhouse/04_clickhouse_table_gemini.sql
 
 # Execute the SQL using clickhouse-client inside the container
 # Note: --multiquery allows running a file with multiple SQL statements

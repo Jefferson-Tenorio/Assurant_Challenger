@@ -1,3 +1,5 @@
+CREATE DATABASE IF NOT EXISTS insurance;
+
 -- 1. Tabela de Queue (Mapeando SEU JSON exato)
 CREATE TABLE IF NOT EXISTS insurance.outbox_queue
 (

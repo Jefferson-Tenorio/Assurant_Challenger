@@ -122,6 +122,7 @@ public class AesGcmCryptoService : ICryptoService
     *   **Autenticidade (Tag):** Se um DBA mal-intencionado alterar 1 bit do `cipherText` ou do `Nonce` no banco de dados, o método `Decrypt` falhará instantaneamente, pois o cálculo do GCM não baterá com a Tag.
     *   **Zero Padding Oracle:** O GCM não usa preenchimento (padding) da mesma forma que o CBC, eliminando uma classe inteira de vulnerabilidades.
 
+
 2.  **Alta Performance (.NET Memory Management):**
     *   **`Span<T>` e `Slice`:** Não estamos criando arrays temporários para `nonce`, `tag` e `cipher` separadamente. Estamos trabalhando em "janelas" de memória sobre o array principal. Isso reduz drasticamente a alocação na Heap (menos trabalho para o Garbage Collector).
     *   **`stackalloc`:** Para strings pequenas (comuns em nomes e CPFs), a memória de descriptografia é alocada na Stack, que é liberada imediatamente após o método retornar, custo zero de GC.

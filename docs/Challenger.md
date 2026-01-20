@@ -56,10 +56,10 @@ Explicitly explain trade-offs and enforcement mechanisms.
 
 Design a solution for cross-service transactional workflows without distributed locks, covering:
 
--   Saga orchestration vs choreography
--   Idempotency strategies
--   Compensating transactions
--   Failure recovery paths
+-   Saga orchestration vs choreography 3º
+-   Idempotency strategies 1º
+-   Compensating transactions 2º
+-   Failure recovery paths 4º
 
 Demonstrate at least one full transactional lifecycle.
 
@@ -67,9 +67,9 @@ Demonstrate at least one full transactional lifecycle.
 
 Implement a streaming-first architecture using tools such as:
 
--   Apache Kafka / Redpanda
--   Schema Registry
--   CDC tools (e.g., Debezium)
+-   Apache Kafka / Redpanda 2º
+-   Schema Registry 1º passo, criar esquemas.
+-   CDC tools (e.g., Debezium) 3º
 
 Demonstrate how events propagate through the system and drive downstream data stores.
 

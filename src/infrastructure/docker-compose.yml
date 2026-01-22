@@ -1,64 +1,243 @@
+# ==============================================================================
+# ESTRATÉGIA DE REDES (A Ilusão da Distância Geográfica)
+# ==============================================================================
+networks:
+  # Rede isolada do Brasil (VPC SA-EAST-1)
+  net-region-br:
+    driver: bridge
+  # Rede isolada dos EUA (VPC US-EAST-1)
+  net-region-us:
+    driver: bridge
+  # Rede de Gerenciamento Global (Peering / VPN / Backbone)
+  # Apenas serviços Globais (ClickHouse, Grafana) entram aqui
+  net-global-backbone:
+    driver: bridge
+
 services:
-  # --- 1. CORE TRANSACTIONAL SERVICE (requirements: transactional core, RLS, CDC) ---
-  transactional-db:
+
+  # ============================================================================
+  # REGION 1: BRASIL (Primary Transactional Cell)
+  # ============================================================================
+
+  # 1.1 POSTGRES BR (Source of Truth BR)
+  postgres-br:
     image: postgres:16-alpine
-    container_name: insurance-core-postgres
+    container_name: db-core-br
     restart: always
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: insurance_core_db
-    # IMPORTANT: enable logical decoding for Debezium CDC
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+      POSTGRES_DB: insurance_core_br
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4"]
     ports:
-      - "5432:5432"
+      - "5432:5432" # Porta Padrão
     volumes:
-      - postgres_core_data:/var/lib/postgresql/data
+      - pg_data_br:/var/lib/postgresql/data
+      # Script de init carrega schemas locais
       - ../database/00_init_schema.sql:/docker-entrypoint-initdb.d/00_init_schema.sql
     networks:
-      - insurance-network
+      - net-region-br
+      - net-global-backbone # Necessário para o Exporter e Debezium verem ele
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin_user} -d insurance_core_db"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d insurance_core_br"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-    # Stress test helper (runs the seed/stress SQL when used; profile 'tools')
-  stress_test:
-    image: postgres:15-alpine
-    container_name: insurance-stress-test
-    # Do not start automatically; used on-demand via Docker Compose profile 'tools'
-    profiles: ["tools"] 
-    # Map the stress-test script into the container
+
+# TODO: Criar um arquivo schema .proto ou outro por conta do schema registry ativo.
+
+  # 1.2 REDPANDA BR (Event Bus BR)
+  redpanda-br:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    container_name: eventbus-core-br
+    command: >
+      redpanda start
+      --smp 1
+      --overprovisioned
+      --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      --advertise-kafka-addr internal://redpanda-br:9092,external://localhost:19092
+      --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      --rpc-addr 0.0.0.0:33145
+    ports:
+      - "19092:19092" # Kafka BR -> Seu PC
+      - "18081:18081" # Schema Registry BR -> Seu PC
+      - "18082:18082" # Proxy BR -> Seu PC
     volumes:
-      - ../database/03_setup_data_stress.sql:/workload.sql
-    depends_on:
-      - transactional-db
+      - redpanda_data_br:/var/lib/redpanda/data
     networks:
-      - insurance-network
-    # Keep container running (idle) so we can exec commands into it when needed
-    entrypoint: ["tail", "-f", "/dev/null"]
+      - net-region-br
+      - net-global-backbone
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep tail | grep -v grep"]
+      test: ["CMD", "rpk", "cluster", "health", "--api-urls", "127.0.0.1:9092"]
+      interval: 15s   # Verifica a cada 10 segundos
+      timeout: 5s     # Se demorar mais de 5s para responder, falhou
+      retries: 5      # Tenta 5 vezes antes de marcar como "unhealthy"
+      start_period: 20s # Dá 20 segundos para o Redpanda "acordar" antes de começar a cobrar saúde
+
+  # 1.3 REDIS BR (Cache BR)
+  redis-br:
+    image: redis:7-alpine
+    container_name: cache-br
+    ports:
+      - "6379:6379"
+    networks:
+      - net-region-br
+
+  # 1.4 DEBEZIUM BR (CDC Worker Local)
+  debezium-br:
+    image: debezium/connect:2.5
+    container_name: cdc-worker-br
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: redpanda-br:9092
+      # --- CONFIGURAÇÃO AVRO ---
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-br:8081
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-br:8081
+      # -------------------------
+      GROUP_ID: cdc-group-br
+      CONFIG_STORAGE_TOPIC: connect_configs_br
+      OFFSET_STORAGE_TOPIC: connect_offsets_br
+      STATUS_STORAGE_TOPIC: connect_statuses_br
+    networks:
+      - net-region-br
+      - net-global-backbone # Precisa ver o Postgres e o Redpanda
+    depends_on:
+      postgres-br:
+        condition: service_healthy
+      redpanda-br:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
       interval: 30s
       timeout: 5s
-      retries: 3
+      retries: 5
+
+  # ============================================================================
+  # REGION 2: USA (Secondary/Failover Transactional Cell)
+  # * DUPLICAÇÃO INTENCIONAL para simular "Shared-Nothing" *
+  # ============================================================================
+
+  # 2.1 POSTGRES US
+  postgres-us:
+    image: postgres:16-alpine
+    container_name: db-core-us
+    environment:
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+      POSTGRES_DB: insurance_core_us
+      command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4"] # Adicionado slots
+    ports:
+      - "5433:5432" # MAPEAR PORTA DIFERENTE NO HOST (5433)
+    volumes:
+      - pg_data_us:/var/lib/postgresql/data
+      - ../database/00_init_schema.sql:/docker-entrypoint-initdb.d/00_init_schema.sql
+    networks:
+      - net-region-us
+      - net-global-backbone
+    healthcheck: # Adicionado healthcheck para consistência
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d insurance_core_us"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 
-  # --- 2. GLOBAL DISTRIBUTED NOSQL (Cassandra for global index/routing) ---
+  # 2.2 REDPANDA US
+  redpanda-us:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    container_name: eventbus-core-us
+    command: >
+      redpanda start
+      --smp 1
+      --overprovisioned
+      --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      --advertise-kafka-addr internal://redpanda-us:9092,external://localhost:29092
+      --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      --rpc-addr 0.0.0.0:33145
+    ports:
+      - "29092:19092" # Seu PC(29092) -> Redpanda US(19092)
+      - "28081:18081" # Seu PC(28081) -> Schema Registry US(18081)
+      - "28082:18082" # Seu PC(28082) -> Proxy US(18082)s
+    volumes:
+      - redpanda_data_us:/var/lib/redpanda/data
+    networks:
+      - net-region-us
+      - net-global-backbone
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 15s       # Um pouco mais conservador que o BR
+      timeout: 10s      
+      retries: 5
+      start_period: 30s   # Janela maior para inicialização de storage e busca de peers
+      
+# 2.4 DEBEZIUM US (CDC Worker Local - USA)
+  debezium-us:
+    image: debezium/connect:2.5
+    container_name: cdc-worker-us
+    ports:
+      - "18083:8083" # Porta 18083 no seu PC -> 8083 no Container US
+    environment:
+      BOOTSTRAP_SERVERS: redpanda-us:9092
+      # --- CONFIGURAÇÃO AVRO (Apontando para o Registry dos EUA) ---
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-us:8081
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://redpanda-us:8081
+      # --- IDENTIDADE ÚNICA PARA OS EUA ---
+      GROUP_ID: cdc-group-us
+      CONFIG_STORAGE_TOPIC: connect_configs_us
+      OFFSET_STORAGE_TOPIC: connect_offsets_us
+      STATUS_STORAGE_TOPIC: connect_statuses_us
+    networks:
+      - net-region-us
+      - net-global-backbone # Necessário para falar com o Postgres-US e Redpanda-US
+    depends_on:
+      postgres-us:
+        condition: service_healthy
+      redpanda-us:
+        condition: service_healthy # Importante: US deve estar saudável
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # 2.3 REDIS US
+  redis-us:
+    image: redis:7-alpine
+    container_name: cache-us
+    ports:
+      - "6380:6379" # Porta mapeada
+    networks:
+      - net-region-us
+
+  # ============================================================================
+  # GLOBAL LAYER (Serviços que atravessam fronteiras)
+  # ============================================================================
+
+  # 3. GLOBAL DISTRIBUTED NOSQL (Cassandra)
+  # Simula o cluster global. Na prática, teríamos nós em cada região,
+  # mas aqui usamos um nó central acessível por todos via Backbone.
   distributed-nosql:
     image: cassandra:4.1
-    container_name: insurance-cassandra
+    container_name: global-cassandra
     ports:
       - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=GlobalInsurance
+      - CASSANDRA_DC=dc-global
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
     volumes:
       - cassandra_data:/var/lib/cassandra
     networks:
-      - insurance-network
-    environment:
-      - CASSANDRA_CLUSTER_NAME=GlobalInsuranceCluster
-      - CASSANDRA_DC=dc1
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - net-global-backbone
+      - net-region-br # App BR acessa
+      - net-region-us # App US acessa
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"]
       interval: 30s
@@ -66,20 +245,24 @@ services:
       retries: 10
 
 
-  # --- 3. ANALYTICAL ENGINE (ClickHouse for analytics/OLAP) ---
+  # TODO: Adcionar as configurações automatizadas do kafka enginer pro br e us.
+  # 4. GLOBAL ANALYTICS (ClickHouse)
+  # O "Grande Irmão" que consome dados do Redpanda BR e Redpanda US
   analytical-db:
     image: clickhouse/clickhouse-server:latest
-    container_name: insurance-clickhouse
+    container_name: global-clickhouse
     ports:
-      - "8123:8123" # HTTP (Para DBeaver, UI, etc)
-      - "9000:9000" # Nativo (Drivers TCP)
+      - "8123:8123" #HTTP 
+      - "9000:9000" #Nativo TCP
     volumes:
-      # Script de inicialização do banco
-      - ../database/04_init_clickhouse_table.sql:/docker-entrypoint-initdb.d/01_init_clickhouse.sql
-      # Configuração de usuário (Admin)
+      - ../database/04_init_clickhouse_table.sql:/docker-entrypoint-initdb.d/init.sql
+      - clickhouse_data:/var/lib/clickhouse
+            # Configuração de usuário (Admin)
       - ./user-clickhouse.xml:/etc/clickhouse-server/users.d/user-clickhouse.xml
     networks:
-      - insurance-network
+      - net-global-backbone
+    # Dica DBA: No ClickHouse, você criará "Kafka Engines" apontando para
+    # redpanda-br:9092 e redpanda-us:9092
     ulimits:
       nofile:
         soft: 262144
@@ -90,206 +273,101 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- 4. IN-MEMORY LAYER (Redis cache for hot data / sessions) ---
-  cache-layer:
-    image: redis:7-alpine
-    container_name: insurance-redis
-    ports:
-      - "6379:6379"
-    networks:
-      - insurance-network
-      
-  # --- 5. EVENT BUS (Redpanda as Kafka-compatible event backbone) ---
-  event-bus:
-    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
-    container_name: insurance-event-bus
-    command: >
-      redpanda start
-      --smp 1
-      --overprovisioned
-      --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      --advertise-kafka-addr internal://event-bus:9092,external://localhost:19092
-      --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
-      --advertise-pandaproxy-addr internal://event-bus:8082,external://localhost:18082
-      --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
-      --rpc-addr 0.0.0.0:33145
-    ports:
-      - "19092:19092"
-      - "18081:18081"
-    volumes:
-      - redpanda_data:/var/lib/redpanda/data
-    networks:
-      - insurance-network
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # --- 6. DATA CAPTURE / CDC (Debezium connector)
-  # Debezium captures Postgres changes (transactional outbox) and publishes to Redpanda/Kafka
-  debezium-connector:
-    image: debezium/connect:2.5
-    container_name: insurance-cdc-connector
-    ports:
-      - "8083:8083"
-    environment:
-      BOOTSTRAP_SERVERS: event-bus:9092
-      GROUP_ID: 1
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      CONFIG_STORAGE_TOPIC: my_connect_configs
-      OFFSET_STORAGE_TOPIC: my_connect_offsets
-      STATUS_STORAGE_TOPIC: my_connect_statuses
-      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-    networks:
-      - insurance-network
-    depends_on:
-      transactional-db:
-        condition: service_healthy
-      event-bus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
-  debezium-init:
-    image: curlimages/curl:8.5.0
-    depends_on:
-      debezium-connector:
-        condition: service_healthy
-    networks:
-      - insurance-network
-    environment:
-      - DB_USER=${DB_USER}         # Necessário passar a variável para dentro
-      - DB_PASSWORD=${DB_PASSWORD} # Necessário passar a variável para dentro
-    volumes:
-    # Register script and connector JSON are mounted so init container can register connectors
-    - ./insurance-outbox-connector.json:/insurance-outbox-connector.json
-    - ./register-conection.sh:/register-conection.sh
-    entrypoint: ["sh", "/register-conection.sh"]
-
-
-
-  # --- 7. SECURITY & SECRETS (HashiCorp Vault for secrets management) ---
+  # 5. SECURITY (Vault)
   security-vault:
     image: hashicorp/vault:1.15
-    container_name: insurance-vault
+    container_name: global-vault
     ports:
       - "8200:8200"
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: "root"
-      VAULT_ADDR: "http://0.0.0.0:8200"
     cap_add:
       - IPC_LOCK
     networks:
-      - insurance-network
+      - net-global-backbone
     healthcheck: 
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
       interval: 30s
       timeout: 5s
       retries: 5
-
-
-  # --- 8. OBSERVABILITY (Prometheus + Grafana + exporters) ---
+  # ============================================================================
+  # OBSERVABILITY (Monitoramento Centralizado)
+  # ============================================================================
+  
   prometheus:
     image: prom/prometheus:latest
-    container_name: insurance-metrics
-    restart: always # keep Prometheus running continuously
+    container_name: global-metrics
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     ports:
       - "9090:9090"
-    depends_on:
-      postgres-exporter:
-        condition: service_healthy
     volumes:
+      # Você precisará editar seu prometheus.yml para ter jobs:
+      # - job_name: 'postgres-br' ... target: 'postgres-exporter-br:9187'
+      # - job_name: 'postgres-us' ... target: 'postgres-exporter-us:9187'
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
-      - insurance-network
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+      - net-global-backbone
 
   grafana:
     image: grafana/grafana-oss:latest
-    container_name: insurance-dashboard
-    restart: always # Mantenha sempre ativo
+    container_name: global-dashboard
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin # Senha inicial
+      - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource,grafana-clock-panel
     volumes:
-      - grafana_data:/var/lib/grafana # Persistência é vital aqui
+      - grafana_data:/var/lib/grafana
     networks:
-      - insurance-network
-    depends_on:
-      prometheus:
-        condition: service_healthy
-      analytical-db:
-        condition: service_healthy
+      - net-global-backbone
 
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
-
-    # Postgres exporter for DB metrics
-  postgres-exporter:
+  # Exporter BR
+  postgres-exporter-br:
     image: prometheuscommunity/postgres-exporter
-    container_name: insurance-pg-exporter
+    container_name: exporter-pg-br
     environment:
-      DATA_SOURCE_NAME: "postgresql://${DB_USER:-admin_user}:${DB_PASSWORD:-secure_pass_123}@transactional-db:5432/insurance_core_db?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-admin}:${DB_PASSWORD:-admin}@postgres-br:5432/insurance_core_br?sslmode=disable"
     networks:
-      - insurance-network
-    depends_on:
-      transactional-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9187/metrics"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+      - net-global-backbone
 
+  # Exporter US
+  postgres-exporter-us:
+    image: prometheuscommunity/postgres-exporter
+    container_name: exporter-pg-us
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-admin}:${DB_PASSWORD:-admin}@postgres-us:5432/insurance_core_us?sslmode=disable"
+    networks:
+      - net-global-backbone
 
-  event-console:
+# Console para o Brasil
+  console-br:
     image: docker.redpanda.com/redpandadata/console:v2.4.3
-    container_name: insurance-event-console
     environment:
-      KAFKA_BROKERS: event-bus:9092
-      KAFKA_SCHEMAREGISTRY_URL: http://event-bus:8081
+      KAFKA_BROKERS: redpanda-br:9092
+      KAFKA_SCHEMAREGISTRY_URL: http://redpanda-br:8081
     ports:
-      - "8080:8080"
+      - "8080:8080" # Acesse o BR em localhost:8080
     networks:
-      - insurance-network
-    depends_on:
-      event-bus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+      - net-region-br
 
-
+  # Console para os EUA
+  console-us:
+    image: docker.redpanda.com/redpandadata/console:v2.4.3
+    environment:
+      KAFKA_BROKERS: redpanda-us:9092
+      KAFKA_SCHEMAREGISTRY_URL: http://redpanda-us:8081
+    ports:
+      - "8081:8080" # Acesse os EUA em localhost:8081 (mapeando a 8080 interna)
+    networks:
+      - net-region-us
 volumes:
-  postgres_core_data:
-  redpanda_data:
+  pg_data_br:
+  pg_data_us:
+  redpanda_data_br:
+  redpanda_data_us:
   cassandra_data:
   clickhouse_data:
   prometheus_data:
   grafana_data:
-
-networks:
-  insurance-network:
-    driver: bridge

@@ -1,9 +1,0 @@
-| Component           | Function                    | Reason for Choice                                                                                                                                                |
-| :------------------ | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PostgreSQL**      | Transactional Core          | Best-in-class support for **ACID**, referential integrity, and strong consistency. Essential for premium calculation, claims processing, and financial reserves. |
-| **Redpanda**        | Event Backbone              | Kafka-compatible, written in C++. Provides **high throughput**, predictable latency, and superior operational efficiency for inter-regional replication.         |
-| **Debezium**        | CDC (Change Data Capture)   | Implements the **Transactional Outbox Pattern** without coupling to application code, ensuring consistency between transactional data and event streams.         |
-| **Cassandra**       | Distributed Global Index    | **Masterless** architecture enables any region to instantly locate where a policy is stored, without a single point of failure.                                  |
-| **ClickHouse**      | Analytics / Fraud Detection | Columnar database optimized for analytical queries over **billions of records**, enabling auditing, BI, and fraud detection in milliseconds.                     |
-| **HashiCorp Vault** | Security / PII              | Logical segregation of secrets and encryption keys. A regional compromise **does not expose sensitive data** from other regions.                                 |
-| **Redis**           | Speed Layer                 | Session caching and *hot data* storage, reducing latency and preventing PostgreSQL overload during traffic spikes.                                               |

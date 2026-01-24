@@ -34,7 +34,7 @@ services:
     volumes:
       - pg_data_br:/var/lib/postgresql/data
       # Script de init carrega schemas locais
-      - ../database/00_init_schema.sql:/docker-entrypoint-initdb.d/00_init_schema.sql
+      - ../database/postgre:/docker-entrypoint-initdb.d
     networks:
       - net-region-br
       - net-global-backbone # Necessário para o Exporter e Debezium verem ele
@@ -51,6 +51,7 @@ services:
   redpanda-br:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
     container_name: eventbus-core-br
+    
     command: >
       redpanda start
       --smp 1
@@ -87,7 +88,9 @@ services:
 
   # 1.4 DEBEZIUM BR (CDC Worker Local)
   debezium-br:
-    image: debezium/connect:2.5
+    build:                         # <-- ADICIONE ISSO
+      context: .
+      dockerfile: Dockerfile.debezium
     container_name: cdc-worker-br
     ports:
       - "8083:8083"
@@ -130,12 +133,12 @@ services:
       POSTGRES_USER: ${DB_USER:-admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
       POSTGRES_DB: insurance_core_us
-      command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4"] # Adicionado slots
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4"] # Adicionado slots
     ports:
       - "5433:5432" # MAPEAR PORTA DIFERENTE NO HOST (5433)
     volumes:
       - pg_data_us:/var/lib/postgresql/data
-      - ../database/00_init_schema.sql:/docker-entrypoint-initdb.d/00_init_schema.sql
+      - ../database/postgre:/docker-entrypoint-initdb.d
     networks:
       - net-region-us
       - net-global-backbone
@@ -177,7 +180,9 @@ services:
       
 # 2.4 DEBEZIUM US (CDC Worker Local - USA)
   debezium-us:
-    image: debezium/connect:2.5
+    build:                         # <-- ADICIONE ISSO
+      context: .
+      dockerfile: Dockerfile.debezium
     container_name: cdc-worker-us
     ports:
       - "18083:8083" # Porta 18083 no seu PC -> 8083 no Container US
@@ -347,6 +352,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda-br:9092
       KAFKA_SCHEMAREGISTRY_URL: http://redpanda-br:8081
+      SCHEMA_REGISTRY_ENABLED: "true"
     ports:
       - "8080:8080" # Acesse o BR em localhost:8080
     networks:
@@ -358,6 +364,7 @@ services:
     environment:
       KAFKA_BROKERS: redpanda-us:9092
       KAFKA_SCHEMAREGISTRY_URL: http://redpanda-us:8081
+      SCHEMA_REGISTRY_ENABLED: "true"
     ports:
       - "8081:8080" # Acesse os EUA em localhost:8081 (mapeando a 8080 interna)
     networks:

@@ -45,8 +45,6 @@ services:
       retries: 5
 
 
-# TODO: Criar um arquivo schema .proto ou outro por conta do schema registry ativo.
-
   # 1.2 REDPANDA BR (Event Bus BR)
   redpanda-br:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
@@ -71,7 +69,7 @@ services:
       - net-region-br
       - net-global-backbone
     healthcheck:
-      test: ["CMD", "rpk", "cluster", "health", "--api-urls", "127.0.0.1:9092"]
+      test: ["CMD", "rpk", "cluster", "health"]
       interval: 15s   # Verifica a cada 10 segundos
       timeout: 5s     # Se demorar mais de 5s para responder, falhou
       retries: 5      # Tenta 5 vezes antes de marcar como "unhealthy"
@@ -161,7 +159,7 @@ services:
       --advertise-kafka-addr internal://redpanda-us:9092,external://localhost:29092
       --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
-      --rpc-addr 0.0.0.0:33145
+      --rpc-addr 0.0.0.0:33146
     ports:
       - "29092:19092" # Seu PC(29092) -> Redpanda US(19092)
       - "28081:18081" # Seu PC(28081) -> Schema Registry US(18081)
@@ -350,27 +348,33 @@ services:
   console-br:
     image: docker.redpanda.com/redpandadata/console:v2.4.3
     environment:
-      KAFKA_BROKERS: redpanda-br:9092
-      KAFKA_SCHEMAREGISTRY_URL: http://redpanda-br:8081
-      SCHEMA_REGISTRY_ENABLED: "true"
+      KAFKA_BROKERS: "redpanda-br:9092"
+      # Ajuste Sênior: Nomes exatos para a v2.x do Console
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda-br:8081"
     ports:
-      - "8080:8080" # Acesse o BR em localhost:8080
+      - "8080:8080"
     networks:
       - net-region-br
+      - net-global-backbone
 
   # Console para os EUA
   console-us:
     image: docker.redpanda.com/redpandadata/console:v2.4.3
+    container_name: insurance-event-console-us
     environment:
-      KAFKA_BROKERS: redpanda-us:9092
-      KAFKA_SCHEMAREGISTRY_URL: http://redpanda-us:8081
-      SCHEMA_REGISTRY_ENABLED: "true"
+      KAFKA_BROKERS: "redpanda-us:9092"
+      # --- CORREÇÃO DE SINTAXE SÊNIOR ---
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda-us:8081" # Porta interna do Docker
+      # ----------------------------------
     ports:
-      - "8081:8080" # Acesse os EUA em localhost:8081 (mapeando a 8080 interna)
+      - "8085:8080" # Acesse os EUA em http://localhost:8085
     networks:
       - net-region-us
+      - net-global-backbone
 volumes:
-  pg_data_br:
+  pg_data_br: 
   pg_data_us:
   redpanda_data_br:
   redpanda_data_us:

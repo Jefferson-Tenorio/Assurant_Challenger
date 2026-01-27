@@ -39,6 +39,7 @@
     "transforms.outbox.table.fields.additional.placement": "type:header:eventType",
     "transforms.outbox.table.field.event.key": "aggregate_id",
     "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.table.expand.json.payload": "true",
     
     "_comment_smt_2": "Para qual tópico enviar? br.core.{aggregate_type}",
     "transforms.outbox.route.topic.replacement": "br.core.${routedByValue}",

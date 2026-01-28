@@ -1,3 +1,8 @@
+# TODO: Atualmente seu redpanda BR e US são ilhas, Se um evennto Claim ocorre no brasil, o sistemas nos EUA nunca saberá, a menos que oclickhouse global, processe isso. como uma arquitetura active active, os eventos precisando viajar.
+# TODO: Adcione um serviço Redpanda Conect ou MirroMaker para fazer o bridge entre as regiẽos.
+# TODO: Crie um topico chamado global.claims, que é espelhado entere BR e o US. Se o Debezium-BR dectecta um sinistro, ele publica no redpanda-br. O mirror Maker copia para o redpanda-us. Agora, o motor de fraude nos EUA pode agir sobre um dado brasileiro em milissegundos.
+
+
 # ==============================================================================
 # ESTRATÉGIA DE REDES (A Ilusão da Distância Geográfica)
 # ==============================================================================

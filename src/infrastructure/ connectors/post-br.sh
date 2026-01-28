@@ -13,3 +13,14 @@ curl -i -X POST \
 
 echo
 echo "✅ Requisição enviada"
+
+
+docker exec -it insurance-event-console-br curl -X PUT \
+  -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  --data '{"compatibility": "BACKWARD"}' \
+  http://redpanda-br:8081/config
+
+  docker exec -it insurance-event-console-br curl -X PUT \
+  -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  --data '{"compatibility": "BACKWARD"}' \
+  http://redpanda-us:8081/config

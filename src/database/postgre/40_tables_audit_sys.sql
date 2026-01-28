@@ -37,7 +37,7 @@ CREATE INDEX idx_audit_changes_gin ON audit.change_logs USING GIN (changes);
 -- TODO: retirei  a partição, mas deveria colocar ela no futuro?
 -- .. (Criação da tabela pai sys.transactional_outbox continua igual) ...
 CREATE TABLE sys.transactional_outbox (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id uuid DEFAULT uuid_generate_v7() PRIMARY KEY,
     aggregate_type varchar(255) NOT NULL,
     aggregate_id varchar(255) NOT NULL,
     type varchar(255) NOT NULL,

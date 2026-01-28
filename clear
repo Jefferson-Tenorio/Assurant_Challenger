@@ -1,0 +1,137 @@
+[33mcommit 3c2ccbcfc8b2d93f6ca3cf73fca942290268b61b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mrefactor/new-arch-multiregion[m[33m, [m[1;31morigin/refactor/new-arch-multiregion[m[33m)[m
+Author: Jefferson-Tenorio <TenorioJefferson@proton.me>
+Date:   Tue Jan 27 19:06:03 2026 -0300
+
+    Solve the schema registry in redpanda console
+
+[33mcommit 7c2c31da3caeea636228d5cedab9f5b0883d29cc[m
+Author: Jefferson-Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Jan 23 22:24:31 2026 -0300
+
+    work load cdc and redpanda config, deb all config. But Avro still no serilizaed in schema registry.
+
+[33mcommit d7f91e23dba50aec0f64f59b6967e4b1a2b585c5[m
+Author: Jefferson-Tenorio <TenorioJefferson@proton.me>
+Date:   Thu Jan 22 20:15:16 2026 -0300
+
+    this is new feature a update of archecture to divide the region in two usa and br
+
+[33mcommit f7329a2f843308dc76f999b167af0f8fd1e7f14f[m
+Author: Jefferson-Tenorio <TenorioJefferson@proton.me>
+Date:   Thu Jan 22 19:48:53 2026 -0300
+
+    Refactor the code to linux and implementation new system of clusters.
+
+[33mcommit 8651a77b7f2f10830771b537718b8cb8cd228ae0[m
+Author: Jefferson-Tenorio <TenorioJefferson@proton.me>
+Date:   Thu Jan 22 10:59:29 2026 -0300
+
+    add some files of documentations.
+
+[33mcommit ade81f18d50712e00ef2f46bfb5527c9a8539b28[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Mon Jan 12 17:04:59 2026 -0300
+
+    Update Encryption&Decryption.txt
+
+[33mcommit 5776a2b2b4a817ddc72b798da6231da56f0d87cb[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Mon Jan 12 17:03:34 2026 -0300
+
+    Add AES-256-GCM encryption/decryption example
+    
+    Introduces a robust .NET implementation of AES-256-GCM for authenticated encryption, optimized with Span<T> for high performance and secure memory handling. The example includes best practices for key management, secure nonce generation, and storage format for enterprise environments.
+
+[33mcommit ec7261e6dbbcf5d2b82c6b1e69dd9ddebb04cf96[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Mon Jan 12 12:57:21 2026 -0300
+
+    Initialize ClickHouse database in setup scripts
+    
+    Adds creation of the 'insurance' database to the ClickHouse table initialization SQL. Updates the setup script to use the correct SQL file for ClickHouse setup.
+
+[33mcommit a771c65c0b8c569a74ddc11bfaac598125eaefeb[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Sat Jan 10 23:40:58 2026 -0300
+
+    Add comment to init schema SQL script
+    
+    Added a comment at the end of 00_init_schema.sql for informational purposes. No functional changes to the schema or configuration.
+
+[33mcommit 935d90fe761238b6be6e69d71a5c509ca26040e3[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Jan 9 14:48:17 2026 -0300
+
+    Refactor ClickHouse setup and improve documentation
+    
+    Replaced legacy ClickHouse table and user SQL scripts with a new initialization script tailored for flat JSON events. Updated docker-compose to use the new schema and user config XML, removing environment-based user setup. Added detailed documentation and expert tips for stress testing, performance tuning, and troubleshooting in markdown and text files.
+
+[33mcommit 56ded2bc19d49cfe6d7c0f61449bbdcd83c498c5[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Thu Jan 8 23:17:30 2026 -0300
+
+    Add ClickHouse setup and refactor Debezium scripts
+    
+    Added ClickHouse user and admin configuration files and updated docker-compose to initialize ClickHouse with these settings. Removed Debezium connector setup from run_db_setup.ps1 and moved it to a separate script in the trash directory. Deleted the old Debezium connection script.
+
+[33mcommit f41c68923f2686b47f4a8c0162fc37fa247252f1[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Thu Jan 8 21:46:05 2026 -0300
+
+    Add ClickHouse integration and enhance setup scripts
+    
+    Introduces ClickHouse table and materialized view SQL scripts for analytics ingestion from Kafka, including a Gemini variant. Updates the Debezium connector configuration to use ExtractNewRecordState SMT for simplified event payloads. Expands the PowerShell setup script to automate ClickHouse and Debezium connector initialization, and documents the connector configuration strategy in the README.
+
+[33mcommit 7c892837df9455f64818088d0fb899b9842ec12f[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:40:56 2025 -0300
+
+    Update 01_store_procedure.sql
+
+[33mcommit 95afa25e31edeb5c0dd76691d1351854fbe6d600[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:28:36 2025 -0300
+
+    Delete resume.md
+
+[33mcommit 0ef7d6c09fbf18015d00f710d6e07dd82aacbac0[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:22:21 2025 -0300
+
+    Update docker-compose.yml
+
+[33mcommit a28c0da3957fc4de1cc154d46e521f5b024a5604[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:21:16 2025 -0300
+
+    Update docker-compose.yml
+
+[33mcommit 1e7bb6326557c5b9c8f93064a3528b35dabdb90c[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:12:21 2025 -0300
+
+    Create diagram_d.md
+
+[33mcommit 769cb7429cdc5502d73d1c029bed90eeeb861892[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 16:05:24 2025 -0300
+
+    Add Linux DB setup script and update docs
+    
+    Added a Bash script (run_db_setup.sh) for database initialization on Linux, mirroring the existing Windows PowerShell script. Updated the documentation to include Linux setup instructions. Also cleaned up comments and removed unnecessary lines from the initial schema SQL file.
+
+[33mcommit 270c67fbcd3a36fb17d56999d09133ad32fa1ee2[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 15:07:05 2025 -0300
+
+    Remove ClickHouse integration and related setup
+    
+    Deleted the ClickHouse database setup SQL script and removed its execution from the database setup PowerShell script. Also cleaned up docker-compose by removing healthchecks for Redis and Redis Exporter. Updated documentation diagrams to remove extraneous comments for clarity.
+
+[33mcommit b1c8419ff009514ce57b00fd39c786003ababf62[m
+Author: Jefferson Tenorio <TenorioJefferson@proton.me>
+Date:   Fri Dec 26 14:29:02 2025 -0300
+
+    Add initial documentation, database schema, and infra setup
+    
+    Introduces comprehensive project documentation, architecture diagrams, and trade-off analysis in the docs directory. Adds initial PostgreSQL schema with partitioning, RLS, transactional outbox, and supporting stored procedures and seed data. Provides infrastructure scaffolding including Docker Compose, Prometheus config, Debezium connector, and setup scripts for local orchestration and development.

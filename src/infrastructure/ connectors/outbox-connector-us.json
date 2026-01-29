@@ -34,10 +34,10 @@
     "# --- TRANSFORMAÇÃO OUTBOX (SMT) ---": "Essencial para desencapsular o evento",
     "transforms": "outbox",
     "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
-    "transforms.outbox.table.fields.additional.placement": "type:header:eventType",
+    "transforms.outbox.table.field.event.id": "event_id",
     "transforms.outbox.table.field.event.key": "aggregate_id",
+    "transforms.outbox.table.field.event.type": "event_type",
     "transforms.outbox.table.field.event.payload": "payload",
-    "transforms.outbox.table.expand.json.payload": "true",
 
     "transforms.outbox.route.topic.replacement":"us.core.${routedByValue}",
     "transforms.outbox.route.by.field": "aggregate_type"

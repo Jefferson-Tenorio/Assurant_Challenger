@@ -1,5 +1,5 @@
 CREATE TABLE access.customers_pii (
-    customer_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- App deve enviar UUIDv7
+    customer_id UUID PRIMARY KEY DEFAULT uuid_generate_v7(), -- App deve enviar UUIDv7
     full_name_encrypted BYTEA NOT NULL, 
     tax_id_encrypted BYTEA NOT NULL, 
     email VARCHAR(255) NOT NULL,

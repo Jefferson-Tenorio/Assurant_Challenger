@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS sys.heartbeat (
 -- =============================================================================
 
 CREATE TABLE audit.change_logs (
-    log_id UUID DEFAULT gen_random_uuid(),
+    log_id UUID DEFAULT uuid_generate_v7(),
     table_name VARCHAR(50) NOT NULL,
     record_id UUID NOT NULL,
     operation VARCHAR(10) NOT NULL,

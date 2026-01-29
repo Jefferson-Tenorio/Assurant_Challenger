@@ -98,8 +98,8 @@ CREATE OR REPLACE PROCEDURE core.sp_seed_mock_policy(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_customer_id UUID := gen_random_uuid();
-    v_policy_id UUID := gen_random_uuid();
+    v_customer_id UUID := uuid_generate_v7();
+    v_policy_id UUID := uuid_generate_v7();
     v_policy_version_id UUID := uuid_generate_v7();
 BEGIN
     -- 1. Inserir no Schema de Acesso (PII)

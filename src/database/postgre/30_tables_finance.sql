@@ -1,5 +1,5 @@
 CREATE TABLE finance.claims (
-    claim_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    claim_id UUID NOT NULL DEFAULT uuid_generate_v7(),
     
     policy_id UUID NOT NULL, 
     policy_version_id UUID NOT NULL REFERENCES core.policies(policy_version_id),

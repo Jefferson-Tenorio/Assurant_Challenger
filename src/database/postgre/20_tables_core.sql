@@ -1,5 +1,5 @@
 CREATE TABLE core.policies (
-    policy_version_id UUID PRIMARY KEY, -- UUIDv7 vindo da App
+    policy_version_id UUID PRIMARY KEY DEFAULT uuid_generate_v7(), -- UUIDv7 vindo da App
     policy_number VARCHAR(50) NOT NULL,
     customer_id UUID NOT NULL REFERENCES access.customers_pii(customer_id),
     idempotency_key VARCHAR(100),
@@ -18,7 +18,7 @@ CREATE TABLE core.policies (
 );
 
 CREATE TABLE core.policy_coverages (
-    coverage_id UUID DEFAULT gen_random_uuid(),
+    coverage_id UUID DEFAULT uuid_generate_v7() PRIMARY KEY,
     policy_id UUID NOT NULL, -- FK Lógica (Não enforcei FK física para performance em batch, mas cuidado)
     coverage_type VARCHAR(50) NOT NULL, 
     limit_amount DECIMAL(15,2) NOT NULL,

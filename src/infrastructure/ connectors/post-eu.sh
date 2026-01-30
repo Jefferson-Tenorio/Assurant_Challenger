@@ -13,3 +13,8 @@ curl -i -X POST \
 
 echo
 echo "✅ Requisição enviada"
+
+docker exec -it infrastructure-console-br-1 curl -X PUT \
+  -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  --data '{"compatibility": "BACKWARD"}' \
+  http://redpanda-us:8081/config

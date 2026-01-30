@@ -352,6 +352,7 @@ services:
 # Console para o Brasil
   console-br:
     image: docker.redpanda.com/redpandadata/console:v2.4.3
+    container_name: insurance-event-console-br 
     environment:
       KAFKA_BROKERS: "redpanda-br:9092"
       # Ajuste Sênior: Nomes exatos para a v2.x do Console

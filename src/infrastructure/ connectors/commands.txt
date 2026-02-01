@@ -1,6 +1,6 @@
 SELECT * FROM core.fn_register_claim(
     gen_random_uuid(),                      -- 1. Chave de Idempotência (Novo request)
-    '019c10ff-d7bf-7120-a690-93585404e7fb', -- 2. O seu POLICY ID (O ID Lógico do contrato)
+    '019c19bc-8f14-78cb-91f4-f35a7767575e', -- 2. O seu POLICY ID (O ID Lógico do contrato)
     NOW(),                                  -- 3. Data do Incidente
     2500.00,                                -- 4. Valor estimado do prejuízo
     'BRL',                                  -- 5. Moeda (Conforme o ENUM)

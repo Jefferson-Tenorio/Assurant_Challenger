@@ -5,25 +5,24 @@ CREATE TYPE currency_code_enum AS ENUM ('USD', 'BRL', 'EUR', 'GBP');
 CREATE OR REPLACE FUNCTION uuid_generate_v7()
 RETURNS uuid AS $$
 DECLARE
-  v_time timestamp with time zone:= clock_timestamp();
-  v_secs bigint := extract(epoch from v_time);
-  v_msec bigint := (v_secs * 1000) + extract(milliseconds from v_time)::bigint % 1000;
-  v_msec_hex text;
+  v_time timestamp with time zone := clock_timestamp();
+  v_unix_t bigint := floor(extract(epoch from v_time) * 1000);
+  v_bytea bytea;
 BEGIN
-  -- 48 bits de timestamp em hexadecimal (12 caracteres)
-  v_msec_hex := lpad(to_hex(v_msec), 12, '0');
-  
-  -- Montagem do UUIDv7: 
-  -- timestamp (48 bits) + '4' (versão) + random (12 bits) + '8' (variante) + random (62 bits)
-  RETURN (
-    v_msec_hex || 
-    '-7' || -- Versão 7
-    substr(to_hex(floor(random() * 4096)::int), 1, 3) || 
-    '-' || 
-    substr('89ab', (floor(random() * 4)::int + 1), 1) || 
-    substr(to_hex(floor(random() * 4096)::int), 1, 3) || 
-    '-' || 
-    lpad(to_hex(floor(random() * 281474976710656)::bigint), 12, '0')
-  )::uuid;
+  -- 1. Geramos 16 bytes aleatórios
+  v_bytea := gen_random_bytes(16);
+
+  -- 2. Colocamos os 48 bits do timestamp nos primeiros 6 bytes
+  v_bytea := overlay(v_bytea placing substring(int8send(v_unix_t) from 3) from 1 for 6);
+
+  -- 3. Definimos a Versão 7 (bits 4-7 do byte 7)
+  -- 0x70 é 01110000 em binário
+  v_bytea := set_byte(v_bytea, 6, (get_byte(v_bytea, 6) & 15) | 112);
+
+  -- 4. Definimos a Variante RFC 4122 (bits 6-7 do byte 9)
+  -- 0x80 é 10000000 em binário
+  v_bytea := set_byte(v_bytea, 8, (get_byte(v_bytea, 8) & 63) | 128);
+
+  RETURN encode(v_bytea, 'hex')::uuid;
 END;
 $$ LANGUAGE plpgsql VOLATILE;

@@ -36,14 +36,7 @@ CREATE INDEX idx_audit_changes_gin ON audit.change_logs USING GIN (changes);
 
 -- TODO: retirei  a partição, mas deveria colocar ela no futuro?
 -- .. (Criação da tabela pai sys.transactional_outbox continua igual) ...
-CREATE TABLE sys.transactional_outbox (
-    id uuid DEFAULT uuid_generate_v7() PRIMARY KEY,
-    aggregate_type varchar(255) NOT NULL,
-    aggregate_id varchar(255) NOT NULL,
-    type varchar(255) NOT NULL,
-    payload jsonb NOT NULL,
-    created_at timestamptz DEFAULT NOW()
-);
+
 -- 1. CRIAR AS PARTIÇÕES PRIMEIRO
 -- CREATE TABLE sys.transactional_outbox_default 
 --    PARTITION OF sys.transactional_outbox DEFAULT;
@@ -68,3 +61,29 @@ CREATE TABLE sys.transactional_outbox (
 -- 3. PUBLICAR A TABELA PAI
 -- O Debezium é inteligente o suficiente para ler a pai e descobrir as filhas.
 -- CREATE PUBLICATION dbz_outbox_pub FOR TABLE sys.transactional_outbox;
+
+DROP TABLE IF EXISTS sys.transactional_outbox CASCADE;
+
+CREATE TABLE sys.transactional_outbox (
+    -- ID Único do Evento
+    event_id UUID NOT NULL DEFAULT uuid_generate_v7(),
+    
+    -- ID para rastreamento (OpenTelemetry/Tracing)
+    correlation_id UUID NOT NULL,
+    
+    -- Dados do Evento
+    aggregate_type VARCHAR(50) NOT NULL, -- ex: 'CLAIM'
+    aggregate_id UUID NOT NULL,          -- ex: ID do Sinistro
+    event_type VARCHAR(50) NOT NULL,     -- ex: 'CLAIM_CREATED'
+    payload JSONB NOT NULL,
+    
+    -- Metadados de Infraestrutura Global
+    region_code VARCHAR(5) NOT NULL,     -- ex: 'BR' ou 'US'
+    occurred_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    -- PK composta necessária para o particionamento
+    PRIMARY KEY (event_id, occurred_at)
+) PARTITION BY RANGE (occurred_at);
+
+-- Criar partição padrão para não dar erro no primeiro INSERT
+CREATE TABLE sys.transactional_outbox_default PARTITION OF sys.transactional_outbox DEFAULT;

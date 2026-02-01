@@ -1,6 +1,9 @@
+
+-- TODO:     "Trabalhamos com imutabilidade. A policy_id identifica o ativo financeiro (o contrato de seguro), enquanto a policy_version_id (UUIDv7) identifica a instância temporal daquele contrato. Isso nos permite ter trilha de auditoria completa e resolver sinistros retroativos sem nunca perder o estado anterior da apólice, mantendo a performance de busca através do particionamento e ordenação temporal dos UUIDs."
 CREATE TABLE core.policies (
     policy_version_id UUID PRIMARY KEY DEFAULT uuid_generate_v7(), -- UUIDv7 vindo da App
     policy_number VARCHAR(50) NOT NULL,
+    policy_id UUID NOT NULL, -- FK Lógica (Não enforcei FK física para performance em batch, mas cuidado)
     customer_id UUID NOT NULL REFERENCES access.customers_pii(customer_id),
     idempotency_key VARCHAR(100),
     validity_period tstzrange NOT NULL,
